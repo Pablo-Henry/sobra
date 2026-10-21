@@ -1,0 +1,1100 @@
+openapi: 3.1.0
+info:
+  title: Sobra API
+  version: 1.0.0
+  description: |
+    API do **Sobra**, aplicação de controle de entradas e saídas de dinheiro.
+
+    - Todos os valores de dinheiro são **centavos inteiros** (ex.: `123456` = R$ 1.234,56).
+    - Datas no formato `YYYY-MM-DD`.
+    - Rotas protegidas exigem o header `Authorization: Bearer <tokenAcesso>`.
+    - Cada usuário só acessa os próprios dados. Recursos de outro usuário respondem **404**.
+    - Todo erro segue o schema `Erro`.
+servers:
+  - url: http://localhost:3000/api
+    description: Desenvolvimento local
+tags:
+  - name: Autenticação
+    description: Cadastro e login
+  - name: Usuários
+    description: Perfil do usuário logado
+  - name: Categorias
+    description: Categorias padrão e personalizadas
+  - name: Lançamentos
+    description: Entradas e saídas de dinheiro
+  - name: Resumos
+    description: Totais mensais, anuais e comparativos
+  - name: Metas
+    description: Meta de economia opcional
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/cadastro:
+    post:
+      tags: [Autenticação]
+      summary: Cadastrar novo usuário
+      description: Cria a conta e já devolve o token de acesso (o usuário entra automaticamente).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CadastroDto'
+      responses:
+        '201':
+          description: Conta criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaAutenticacao'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '409':
+          description: E-mail ou CPF já cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                emailDuplicado:
+                  value:
+                    statusCode: 409
+                    codigo: EMAIL_JA_CADASTRADO
+                    mensagem: Este e-mail já está cadastrado. Tente entrar na sua conta.
+                    caminho: /api/auth/cadastro
+                    dataHora: '2026-10-21T14:00:00.000Z'
+                cpfDuplicado:
+                  value:
+                    statusCode: 409
+                    codigo: CPF_JA_CADASTRADO
+                    mensagem: Este CPF já está cadastrado.
+                    caminho: /api/auth/cadastro
+                    dataHora: '2026-10-21T14:00:00.000Z'
+        '429':
+          $ref: '#/components/responses/MuitasTentativas'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /auth/entrar:
+    post:
+      tags: [Autenticação]
+      summary: Entrar (login)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntrarDto'
+      responses:
+        '200':
+          description: Login realizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaAutenticacao'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          description: E-mail ou senha inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                statusCode: 401
+                codigo: CREDENCIAIS_INVALIDAS
+                mensagem: E-mail ou senha inválidos.
+                caminho: /api/auth/entrar
+                dataHora: '2026-10-21T14:00:00.000Z'
+        '429':
+          $ref: '#/components/responses/MuitasTentativas'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /usuarios/eu:
+    get:
+      tags: [Usuários]
+      summary: Ver meu perfil
+      responses:
+        '200':
+          description: Perfil do usuário logado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    patch:
+      tags: [Usuários]
+      summary: Atualizar meu perfil
+      description: Atualiza nome, data de nascimento, telefone e/ou salário. E-mail e CPF não podem ser alterados.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarUsuarioDto'
+      responses:
+        '200':
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /categorias:
+    get:
+      tags: [Categorias]
+      summary: Listar categorias
+      description: Devolve as categorias padrão do sistema e as criadas pelo usuário.
+      parameters:
+        - $ref: '#/components/parameters/TipoOpcional'
+      responses:
+        '200':
+          description: Lista de categorias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Categoria'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    post:
+      tags: [Categorias]
+      summary: Criar categoria própria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarCategoriaDto'
+      responses:
+        '201':
+          description: Categoria criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Categoria'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '409':
+          description: Já existe uma categoria com este nome e tipo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                statusCode: 409
+                codigo: CATEGORIA_JA_EXISTE
+                mensagem: Você já tem uma categoria com este nome.
+                caminho: /api/categorias
+                dataHora: '2026-10-21T14:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /categorias/{id}:
+    delete:
+      tags: [Categorias]
+      summary: Excluir categoria própria
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Categoria excluída
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: Categoria possui lançamentos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                statusCode: 409
+                codigo: CATEGORIA_EM_USO
+                mensagem: Esta categoria tem lançamentos. Mova ou exclua os lançamentos antes.
+                caminho: /api/categorias/0b6f0c3e-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+                dataHora: '2026-10-21T14:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /lancamentos:
+    get:
+      tags: [Lançamentos]
+      summary: Listar lançamentos do mês
+      description: Lista paginada (20 por página), da data mais recente para a mais antiga.
+      parameters:
+        - $ref: '#/components/parameters/TipoObrigatorio'
+        - $ref: '#/components/parameters/Mes'
+        - $ref: '#/components/parameters/Ano'
+        - name: pagina
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+      responses:
+        '200':
+          description: Página de lançamentos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaLancamentos'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    post:
+      tags: [Lançamentos]
+      summary: Criar lançamento (entrada ou saída)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarLancamentoDto'
+      responses:
+        '201':
+          description: Lançamento criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lancamento'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /lancamentos/{id}:
+    patch:
+      tags: [Lançamentos]
+      summary: Editar lançamento
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarLancamentoDto'
+      responses:
+        '200':
+          description: Lançamento atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lancamento'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    delete:
+      tags: [Lançamentos]
+      summary: Excluir lançamento
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Lançamento excluído
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /resumos/mensal:
+    get:
+      tags: [Resumos]
+      summary: Resumo do mês
+      description: Totais de entradas e saídas, sobra, sugestão de 30% e situação da sobra.
+      parameters:
+        - $ref: '#/components/parameters/Mes'
+        - $ref: '#/components/parameters/Ano'
+      responses:
+        '200':
+          description: Resumo mensal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumoMensal'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /resumos/mensal/categorias:
+    get:
+      tags: [Resumos]
+      summary: Totais por categoria no mês
+      parameters:
+        - $ref: '#/components/parameters/Mes'
+        - $ref: '#/components/parameters/Ano'
+        - $ref: '#/components/parameters/TipoObrigatorio'
+      responses:
+        '200':
+          description: Total de cada categoria no mês (só categorias com valor > 0), do maior para o menor
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TotalCategoria'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /resumos/anual:
+    get:
+      tags: [Resumos]
+      summary: Fechamento do ano
+      description: Sempre devolve os 12 meses (meses sem lançamento vêm com 0) e o total do ano.
+      parameters:
+        - $ref: '#/components/parameters/Ano'
+      responses:
+        '200':
+          description: Resumo anual
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumoAnual'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /resumos/comparativo-anos:
+    get:
+      tags: [Resumos]
+      summary: Comparativo entre anos
+      description: Totais de entradas, saídas e sobra dos últimos N anos, terminando no ano atual (ordem crescente).
+      parameters:
+        - name: quantidade
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+            default: 3
+      responses:
+        '200':
+          description: Totais por ano
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TotalAno'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+  /metas:
+    get:
+      tags: [Metas]
+      summary: Ver meta atual
+      responses:
+        '200':
+          description: Meta com progresso, ou null se o usuário não tiver meta
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Meta'
+                  - type: 'null'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    put:
+      tags: [Metas]
+      summary: Criar ou substituir meta
+      description: Se já existir uma meta, ela é substituída e o progresso recomeça a partir do mês atual.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalvarMetaDto'
+      responses:
+        '200':
+          description: Meta salva
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    delete:
+      tags: [Metas]
+      summary: Remover meta
+      responses:
+        '204':
+          description: Meta removida
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token recebido em /auth/entrar ou /auth/cadastro. Expira em 1 hora.
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Mes:
+      name: mes
+      in: query
+      required: true
+      description: Mês de 1 a 12
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 12
+        example: 10
+    Ano:
+      name: ano
+      in: query
+      required: true
+      description: De 2000 até o ano atual + 1
+      schema:
+        type: integer
+        minimum: 2000
+        example: 2026
+    TipoObrigatorio:
+      name: tipo
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/TipoLancamento'
+    TipoOpcional:
+      name: tipo
+      in: query
+      required: false
+      description: Se omitido, devolve os dois tipos
+      schema:
+        $ref: '#/components/schemas/TipoLancamento'
+
+  responses:
+    ErroValidacao:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          examples:
+            validacao:
+              value:
+                statusCode: 400
+                codigo: VALIDACAO_FALHOU
+                mensagem: Alguns campos estão inválidos. Confira e tente de novo.
+                erros:
+                  - campo: cpf
+                    mensagem: CPF inválido. Confira os números digitados.
+                  - campo: senha
+                    mensagem: A senha deve ter de 8 a 16 caracteres, com pelo menos 1 letra, 1 número e 1 caractere especial.
+                caminho: /api/auth/cadastro
+                dataHora: '2026-10-21T14:00:00.000Z'
+            conteudoNaoPermitido:
+              value:
+                statusCode: 400
+                codigo: CONTEUDO_NAO_PERMITIDO
+                mensagem: O texto contém caracteres não permitidos.
+                erros:
+                  - campo: descricao
+                    mensagem: Use de 2 a 100 caracteres, sem símbolos como < > { }.
+                caminho: /api/lancamentos
+                dataHora: '2026-10-21T14:00:00.000Z'
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            statusCode: 401
+            codigo: SESSAO_EXPIRADA
+            mensagem: Sua sessão expirou. Entre novamente.
+            caminho: /api/usuarios/eu
+            dataHora: '2026-10-21T14:00:00.000Z'
+    NaoEncontrado:
+      description: Registro não existe ou pertence a outro usuário
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            statusCode: 404
+            codigo: NAO_ENCONTRADO
+            mensagem: Não encontramos este registro. Ele pode ter sido excluído.
+            caminho: /api/lancamentos/0b6f0c3e-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+            dataHora: '2026-10-21T14:00:00.000Z'
+    MuitasTentativas:
+      description: Limite de 5 requisições por minuto excedido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            statusCode: 429
+            codigo: MUITAS_TENTATIVAS
+            mensagem: Muitas tentativas. Aguarde 1 minuto e tente novamente.
+            caminho: /api/auth/entrar
+            dataHora: '2026-10-21T14:00:00.000Z'
+    ErroInterno:
+      description: Erro inesperado no servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            statusCode: 500
+            codigo: ERRO_INTERNO
+            mensagem: Algo deu errado do nosso lado. Tente novamente em instantes.
+            caminho: /api/resumos/mensal
+            dataHora: '2026-10-21T14:00:00.000Z'
+
+  schemas:
+    TipoLancamento:
+      type: string
+      enum: [ENTRADA, SAIDA]
+
+    SituacaoSobra:
+      type: string
+      enum: [NEGATIVA, ABAIXO_DA_META, META_ATINGIDA]
+      description: |
+        NEGATIVA: sobra < 0.
+        ABAIXO_DA_META: 0 ≤ sobra < valorSugerido.
+        META_ATINGIDA: sobra ≥ valorSugerido.
+
+    Erro:
+      type: object
+      required: [statusCode, codigo, mensagem, caminho, dataHora]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        codigo:
+          type: string
+          enum:
+            - VALIDACAO_FALHOU
+            - CONTEUDO_NAO_PERMITIDO
+            - CREDENCIAIS_INVALIDAS
+            - SESSAO_EXPIRADA
+            - NAO_ENCONTRADO
+            - EMAIL_JA_CADASTRADO
+            - CPF_JA_CADASTRADO
+            - CATEGORIA_JA_EXISTE
+            - CATEGORIA_EM_USO
+            - MUITAS_TENTATIVAS
+            - ERRO_INTERNO
+        mensagem:
+          type: string
+          example: Alguns campos estão inválidos. Confira e tente de novo.
+        erros:
+          type: array
+          description: Só aparece em erros de validação
+          items:
+            type: object
+            required: [campo, mensagem]
+            properties:
+              campo:
+                type: string
+                example: cpf
+              mensagem:
+                type: string
+                example: CPF inválido. Confira os números digitados.
+        caminho:
+          type: string
+          example: /api/auth/cadastro
+        dataHora:
+          type: string
+          format: date-time
+
+    CadastroDto:
+      type: object
+      additionalProperties: false
+      required: [nome, dataNascimento, email, senha, telefone, cpf, salarioEmCentavos]
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: '^[A-Za-zÀ-ÖØ-öø-ÿ ]{3,100}$'
+          description: Só letras (com acento) e espaços
+          example: Maria Souza
+        dataNascimento:
+          type: string
+          format: date
+          description: Idade entre 16 e 120 anos
+          example: '1998-04-15'
+        email:
+          type: string
+          format: email
+          maxLength: 150
+          pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+          example: maria@exemplo.com
+        senha:
+          type: string
+          minLength: 8
+          maxLength: 16
+          pattern: '^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s])\S{8,16}$'
+          description: 8 a 16 caracteres, com pelo menos 1 letra, 1 número e 1 caractere especial, sem espaços
+          example: Sobra@2026
+        telefone:
+          type: string
+          pattern: '^\d{10,11}$'
+          description: Só dígitos, com DDD (10 para fixo, 11 para celular)
+          example: '11912345678'
+        cpf:
+          type: string
+          pattern: '^\d{11}$'
+          description: Só dígitos, com dígitos verificadores válidos
+          example: '52998224725'
+        salarioEmCentavos:
+          type: integer
+          minimum: 1
+          maximum: 100000000
+          example: 500000
+
+    EntrarDto:
+      type: object
+      additionalProperties: false
+      required: [email, senha]
+      properties:
+        email:
+          type: string
+          format: email
+          example: maria@exemplo.com
+        senha:
+          type: string
+          example: Sobra@2026
+
+    RespostaAutenticacao:
+      type: object
+      required: [tokenAcesso, expiraEm, usuario]
+      properties:
+        tokenAcesso:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expiraEm:
+          type: integer
+          description: Segundos até expirar
+          example: 3600
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+
+    Usuario:
+      type: object
+      required: [id, nome, dataNascimento, idade, email, telefone, cpf, salarioEmCentavos, criadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: Maria Souza
+        dataNascimento:
+          type: string
+          format: date
+          example: '1998-04-15'
+        idade:
+          type: integer
+          description: Calculada a partir da data de nascimento
+          example: 28
+        email:
+          type: string
+          example: maria@exemplo.com
+        telefone:
+          type: string
+          example: '11912345678'
+        cpf:
+          type: string
+          example: '52998224725'
+        salarioEmCentavos:
+          type: integer
+          example: 500000
+        criadoEm:
+          type: string
+          format: date-time
+
+    AtualizarUsuarioDto:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: '^[A-Za-zÀ-ÖØ-öø-ÿ ]{3,100}$'
+          example: Maria Souza Lima
+        dataNascimento:
+          type: string
+          format: date
+          example: '1998-04-15'
+        telefone:
+          type: string
+          pattern: '^\d{10,11}$'
+          example: '1133334444'
+        salarioEmCentavos:
+          type: integer
+          minimum: 1
+          maximum: 100000000
+          example: 650000
+
+    Categoria:
+      type: object
+      required: [id, nome, tipo, icone, padrao]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: Alimentação
+        tipo:
+          $ref: '#/components/schemas/TipoLancamento'
+        icone:
+          type: string
+          description: Nome de um ícone Lucide
+          example: utensils
+        padrao:
+          type: boolean
+          description: true para categorias do sistema (não podem ser excluídas)
+          example: true
+
+    CriarCategoriaDto:
+      type: object
+      additionalProperties: false
+      required: [nome, tipo, icone]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 40
+          example: Pets
+        tipo:
+          $ref: '#/components/schemas/TipoLancamento'
+        icone:
+          type: string
+          maxLength: 40
+          example: paw-print
+
+    Lancamento:
+      type: object
+      required: [id, tipo, descricao, valorEmCentavos, data, categoria, criadoEm, atualizadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          $ref: '#/components/schemas/TipoLancamento'
+        descricao:
+          type: string
+          example: Mercado do mês
+        valorEmCentavos:
+          type: integer
+          example: 45890
+        data:
+          type: string
+          format: date
+          example: '2026-10-05'
+        categoria:
+          $ref: '#/components/schemas/Categoria'
+        criadoEm:
+          type: string
+          format: date-time
+        atualizadoEm:
+          type: string
+          format: date-time
+
+    CriarLancamentoDto:
+      type: object
+      additionalProperties: false
+      required: [tipo, descricao, valorEmCentavos, data, categoriaId]
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoLancamento'
+        descricao:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: 'Não aceita < > { } \ nem "javascript:"'
+          example: Mercado do mês
+        valorEmCentavos:
+          type: integer
+          minimum: 1
+          maximum: 1000000000
+          example: 45890
+        data:
+          type: string
+          format: date
+          description: De 2000-01-01 até 31/12 do ano seguinte
+          example: '2026-10-05'
+        categoriaId:
+          type: string
+          format: uuid
+          description: Categoria padrão ou do usuário, do mesmo tipo do lançamento
+
+    AtualizarLancamentoDto:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Mesmas regras de CriarLancamentoDto, todos os campos opcionais
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoLancamento'
+        descricao:
+          type: string
+          minLength: 2
+          maxLength: 100
+        valorEmCentavos:
+          type: integer
+          minimum: 1
+          maximum: 1000000000
+        data:
+          type: string
+          format: date
+        categoriaId:
+          type: string
+          format: uuid
+
+    PaginaLancamentos:
+      type: object
+      required: [itens, pagina, tamanhoPagina, totalItens, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lancamento'
+        pagina:
+          type: integer
+          example: 1
+        tamanhoPagina:
+          type: integer
+          example: 20
+        totalItens:
+          type: integer
+          example: 7
+        totalPaginas:
+          type: integer
+          example: 1
+
+    ResumoMensal:
+      type: object
+      required: [mes, ano, totalEntradas, totalSaidas, sobra, salario, valorSugerido, percentualGuardado, situacao]
+      properties:
+        mes:
+          type: integer
+          example: 10
+        ano:
+          type: integer
+          example: 2026
+        totalEntradas:
+          type: integer
+          example: 520000
+        totalSaidas:
+          type: integer
+          example: 381000
+        sobra:
+          type: integer
+          example: 139000
+        salario:
+          type: integer
+          example: 500000
+        valorSugerido:
+          type: integer
+          description: 30% do salário
+          example: 150000
+        percentualGuardado:
+          type: number
+          description: sobra ÷ salário × 100, com 1 casa decimal
+          example: 27.8
+        situacao:
+          $ref: '#/components/schemas/SituacaoSobra'
+
+    TotalCategoria:
+      type: object
+      required: [categoria, totalEmCentavos]
+      properties:
+        categoria:
+          $ref: '#/components/schemas/Categoria'
+        totalEmCentavos:
+          type: integer
+          example: 120000
+
+    TotalMes:
+      type: object
+      required: [mes, entradas, saidas, sobra]
+      properties:
+        mes:
+          type: integer
+          example: 1
+        entradas:
+          type: integer
+          example: 500000
+        saidas:
+          type: integer
+          example: 410000
+        sobra:
+          type: integer
+          example: 90000
+
+    ResumoAnual:
+      type: object
+      required: [ano, meses, total]
+      properties:
+        ano:
+          type: integer
+          example: 2026
+        meses:
+          type: array
+          minItems: 12
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/TotalMes'
+        total:
+          type: object
+          required: [entradas, saidas, sobra]
+          properties:
+            entradas:
+              type: integer
+              example: 6000000
+            saidas:
+              type: integer
+              example: 4700000
+            sobra:
+              type: integer
+              example: 1300000
+
+    TotalAno:
+      type: object
+      required: [ano, entradas, saidas, sobra]
+      properties:
+        ano:
+          type: integer
+          example: 2025
+        entradas:
+          type: integer
+          example: 5800000
+        saidas:
+          type: integer
+          example: 4900000
+        sobra:
+          type: integer
+          example: 900000
+
+    Meta:
+      type: object
+      required: [id, nome, valorAlvoEmCentavos, valorAcumuladoEmCentavos, progresso, atingida, criadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+          example: Viagem para o Nordeste
+        valorAlvoEmCentavos:
+          type: integer
+          example: 500000
+        prazo:
+          type:
+            - string
+            - 'null'
+          format: date
+          example: '2027-07-01'
+        valorAcumuladoEmCentavos:
+          type: integer
+          description: Soma das sobras positivas desde o mês de criação
+          example: 360000
+        progresso:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 72
+        atingida:
+          type: boolean
+          example: false
+        criadoEm:
+          type: string
+          format: date-time
+
+    SalvarMetaDto:
+      type: object
+      additionalProperties: false
+      required: [nome, valorAlvoEmCentavos]
+      properties:
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 60
+          example: Viagem para o Nordeste
+        valorAlvoEmCentavos:
+          type: integer
+          minimum: 1
+          maximum: 1000000000
+          example: 500000
+        prazo:
+          type:
+            - string
+            - 'null'
+          format: date
+          description: Opcional; se informado, precisa ser uma data futura
+          example: '2027-07-01'
